@@ -1,0 +1,73 @@
+function [motorOmega, omegaSquared, U_real] = QuadrotorMixer(T, tau, quad)
+% QuadrotorMixer
+% -------------------------------------------------------------------------
+% Converte empuxo total e torques desejados em velocidades angulares dos
+% quatro motores do quadrirotor.
+%
+% Esta versao possui saturacao hardcoded para evitar:
+%   - omega_i^2 negativo;
+%   - omega_i acima do limite maximo.
+%
+% ENTRADAS:
+%   T    : empuxo total desejado [N]
+%
+%   tau  : vetor de torques desejados [N.m]
+%          tau = [
+%              tau_x;
+%              tau_y;
+%              tau_z
+%          ];
+%
+%   quad : struct gerada por EstimatedQuadParameters
+%
+% SAIDAS:
+%   motorOmega   : velocidades angulares dos motores [rad/s]
+%   omegaSquared : quadrado das velocidades angulares dos motores
+%   U_real       : comando realmente produzido apos saturacao
+%
+% -------------------------------------------------------------------------
+
+    %% ---------------------- Parametros do quadrirotor -------------------
+    k_aero = quad.k_aero;
+    k_drag = quad.k_drag;
+    l = quad.armLength;
+
+    %% ---------------------- Limites hardcoded dos motores ---------------
+    omegaMin = 0;                    % [rad/s]
+    omegaMax = 1.5*quad.hoverOmega;  % [rad/s]
+
+    omegaSquaredMin = omegaMin^2;
+    omegaSquaredMax = omegaMax^2;
+
+    %% ---------------------- Vetor de comandos desejados -----------------
+    U_des = [
+        T;
+        tau(1);
+        tau(2);
+        tau(3)
+    ];
+
+    %% ---------------------- Matriz de mistura ---------------------------
+    mixerMatrix = [
+        k_aero,        k_aero,        k_aero,        k_aero;
+        0,            -l*k_aero,      0,             l*k_aero;
+        l*k_aero,      0,            -l*k_aero,      0;
+       -k_drag,        k_drag,       -k_drag,        k_drag
+    ];
+
+    %% ---------------------- Calculo de omega^2 --------------------------
+    omegaSquared = mixerMatrix\U_des;
+
+    %% ---------------------- Saturacao fisica ----------------------------
+    % Evita omega_i^2 negativo.
+    omegaSquared = max(omegaSquared, omegaSquaredMin);
+
+    % Evita velocidade angular acima do limite maximo.
+    omegaSquared = min(omegaSquared, omegaSquaredMax);
+
+    %% ---------------------- Velocidade angular dos motores --------------
+    motorOmega = sqrt(omegaSquared);
+
+    %% ---------------------- Comando real apos saturacao -----------------
+    U_real = mixerMatrix*omegaSquared;
+end
