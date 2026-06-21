@@ -19,6 +19,19 @@ function waypoints = BuildWaypoints(trajectoryType)
                 0.0    0.0    0.0
             ];
 
+        case "quad50"
+            waypoints = [
+                 0.0     0.0    0.0;
+                 0.0     0.0   50.0;
+               -25.0     0.0   50.0;
+               -25.0   -25.0   50.0;
+                25.0   -25.0   50.0;
+                25.0    25.0   50.0;
+               -25.0    25.0   50.0;
+               -25.0     0.0   50.0;
+                 0.0     0.0    0.0
+            ];
+
         case "testz"
             waypoints = [
                 0.0    0.0    0.0;
