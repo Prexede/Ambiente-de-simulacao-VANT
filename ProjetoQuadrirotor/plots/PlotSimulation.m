@@ -32,6 +32,10 @@ function PlotSimulation(simData, plotConfig)
         PlotMotorSpeeds(simData);
     end
 
+    if isfield(plotConfig, "lapComparison") && plotConfig.lapComparison
+        PlotLapComparison(simData);
+    end
+
     drawnow;
 
     if plotConfig.animation

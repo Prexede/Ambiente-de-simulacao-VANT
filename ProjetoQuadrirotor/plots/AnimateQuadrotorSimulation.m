@@ -11,10 +11,29 @@ function anim = AnimateQuadrotorSimulation(simData, plotConfig)
 %   - Menu para escolher qual volta mostrar.
 %   - Painel de informacoes do drone.
 %   - Trajetoria de cada volta com cor diferente.
+%   - Garante que apenas uma animacao fique aberta por vez.
 % -------------------------------------------------------------------------
 
     if nargin < 2 || isempty(plotConfig)
         plotConfig = PlotConfig("Animation", true);
+    end
+
+    % ---------------------------------------------------------------------
+    % Fecha qualquer animacao anterior para evitar abrir duas janelas
+    % ---------------------------------------------------------------------
+    existingFig = findall(0, "Type", "figure", "Tag", "QuadrotorAnimationFigure");
+
+    for i = 1:numel(existingFig)
+        try
+            if isappdata(existingFig(i), "AnimationTimer")
+                oldTimer = getappdata(existingFig(i), "AnimationTimer");
+                SafeStopAndDeleteTimer(oldTimer);
+            end
+            if isvalid(existingFig(i))
+                delete(existingFig(i));
+            end
+        catch
+        end
     end
 
     t = simData.t(:).';
@@ -93,6 +112,7 @@ function anim = AnimateQuadrotorSimulation(simData, plotConfig)
         "NumberTitle", "off", ...
         "Color", darkBg, ...
         "WindowStyle", "normal", ...
+        "Tag", "QuadrotorAnimationFigure", ...
         "CloseRequestFcn", @CloseAnimation);
 
     ax = axes( ...
@@ -200,10 +220,10 @@ function anim = AnimateQuadrotorSimulation(simData, plotConfig)
         "String", "Status: rodando");
 
     lapOptions = cell(numLaps + 1, 1);
-    lapOptions{1} = "Todas";
+    lapOptions{1} = 'Todas';
 
     for lap = 1:numLaps
-        lapOptions{lap + 1} = sprintf("Volta %d", lap);
+        lapOptions{lap + 1} = sprintf('Volta %d', lap);
     end
 
     lapLabel = uicontrol( ...
@@ -379,10 +399,6 @@ function anim = AnimateQuadrotorSimulation(simData, plotConfig)
         data = get(fig, "UserData");
 
         selectedValue = get(data.handles.lapSelector, "Value");
-
-        % selectedValue = 1 -> Todas
-        % selectedValue = 2 -> Volta 1
-        % selectedValue = 3 -> Volta 2
         data.selectedLap = selectedValue - 1;
 
         data.frameList = BuildFrameList(data.selectedLap);
@@ -494,7 +510,6 @@ function anim = AnimateQuadrotorSimulation(simData, plotConfig)
                 tmr = getappdata(fig, "AnimationTimer");
                 SafeStopAndDeleteTimer(tmr);
             end
-
             delete(fig);
         end
     end
@@ -743,7 +758,6 @@ function SafeStopAndDeleteTimer(tmr)
         if strcmp(tmr.Running, "on")
             stop(tmr);
         end
-
         delete(tmr);
     end
 end

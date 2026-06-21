@@ -36,6 +36,13 @@ function simData = InitializeSimulationData(simConfig, quadConfig, controllersCo
     simData.condition.mass = flightPlan.condition.mass;
     simData.condition.windInertial = flightPlan.condition.windInertial;
     simData.condition.forceInertial = flightPlan.condition.forceInertial;
+
+    if isfield(flightPlan.condition, "torqueBody")
+        simData.condition.torqueBody = flightPlan.condition.torqueBody;
+    else
+        simData.condition.torqueBody = zeros(3, N);
+    end
+
     simData.condition.lap = flightPlan.index.lap;
     simData.condition.segment = flightPlan.index.segment;
     simData.condition.segmentInLap = flightPlan.index.segmentInLap;
@@ -44,6 +51,8 @@ function simData = InitializeSimulationData(simConfig, quadConfig, controllersCo
     simData.diagnostic.anyMotorSaturation = false(1, N);
     simData.diagnostic.tiltSaturation = false(2, N);
     simData.diagnostic.thrustSaturation = false(1, N);
+
+    simData.diagnostic.resetApplied = false(1, N);
 
     simData.config.sim = simConfig;
     simData.config.quad = quadConfig;

@@ -11,9 +11,15 @@ function simConfig = SimulationPlanner(varargin)
 %   segmentTime       -> tempo de cada movimento entre dois waypoints;
 %   lapTime           -> tempo para completar uma volta;
 %   repetitions       -> numero de voltas completas.
+%
+% Opcao adicional:
+%   ResetStateEachLap -> se true, o drone volta para a condicao inicial no
+%                        inicio de cada volta. Tambem zera os integradores
+%                        dos controladores e os comandos internos.
 % -------------------------------------------------------------------------
 
     p = inputParser;
+
     addParameter(p, "TrajectoryType", "quad");
     addParameter(p, "Ts", 0.01, @(x) isnumeric(x) && isscalar(x) && x > 0);
     addParameter(p, "SegmentTime", 5, @(x) isnumeric(x) && isscalar(x) && x > 0);
@@ -21,6 +27,9 @@ function simConfig = SimulationPlanner(varargin)
     addParameter(p, "YawDesired", 0, @(x) isnumeric(x) && isscalar(x));
     addParameter(p, "IntegrationMethod", "RK4");
     addParameter(p, "InitialState", zeros(12,1), @(x) isnumeric(x) && numel(x) == 12);
+
+    addParameter(p, "ResetStateEachLap", false, @(x) islogical(x) || isnumeric(x));
+
     parse(p, varargin{:});
 
     trajectoryType = string(p.Results.TrajectoryType);
@@ -32,6 +41,7 @@ function simConfig = SimulationPlanner(varargin)
     initialState = p.Results.InitialState(:);
 
     waypoints = BuildWaypoints(trajectoryType);
+
     numWaypointsPerLap = size(waypoints, 1);
     numSegmentsPerLap = numWaypointsPerLap - 1;
 
@@ -44,6 +54,7 @@ function simConfig = SimulationPlanner(varargin)
     tf = totalSegments * segmentTime;
 
     t = 0:Ts:tf;
+
     if abs(t(end) - tf) > 10*eps(max(1, tf))
         t = [t, tf];
     end
@@ -66,4 +77,7 @@ function simConfig = SimulationPlanner(varargin)
 
     simConfig.integration.method = integrationMethod;
     simConfig.initialState = initialState;
+
+    simConfig.reset.stateEachLap = logical(p.Results.ResetStateEachLap);
+    simConfig.reset.state = initialState;
 end

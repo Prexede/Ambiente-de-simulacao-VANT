@@ -12,6 +12,9 @@ function plotConfig = PlotConfig(varargin)
     addParameter(p, "Mass", true, @(x) islogical(x) || isnumeric(x));
     addParameter(p, "Motors", true, @(x) islogical(x) || isnumeric(x));
 
+    % Novo grafico: compara as voltas sobrepostas.
+    addParameter(p, "LapComparison", true, @(x) islogical(x) || isnumeric(x));
+
     addParameter(p, "Animation", false, @(x) islogical(x) || isnumeric(x));
     addParameter(p, "AnimationStep", 10, @(x) isnumeric(x) && isscalar(x) && x >= 1);
     addParameter(p, "AnimationPeriod", 0.03, @(x) isnumeric(x) && isscalar(x) && x > 0);
@@ -25,6 +28,8 @@ function plotConfig = PlotConfig(varargin)
     plotConfig.errors = logical(p.Results.Errors);
     plotConfig.mass = logical(p.Results.Mass);
     plotConfig.motors = logical(p.Results.Motors);
+
+    plotConfig.lapComparison = logical(p.Results.LapComparison);
 
     plotConfig.animation = logical(p.Results.Animation);
     plotConfig.animationStep = round(p.Results.AnimationStep);
