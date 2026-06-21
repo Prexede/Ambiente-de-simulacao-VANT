@@ -1,247 +1,237 @@
 %% main.m
 % -------------------------------------------------------------------------
-% Simulacao organizada do quadrirotor
+% Ambiente refatorado para simulacao de voo de um VANT quadrotor.
 %
-% Sequencia:
-% 1 - Planejador de trajetoria
-% 2 - Criacao do modelo do quadrotor
-% 3 - Configuracao de disturbios
-% 4 - Configuracao da simulacao
-% 5 - Configuracao dos controladores
-% 6 - Loop principal
-% 7 - Plots / animacao
+% Fluxo principal:
+%   1) Modelo nominal do quadrotor
+%   2) Configuracao da simulacao
+%   3) Plano de voo: trajetoria + disturbios por volta
+%   4) Configuracao dos controladores
+%   5) Loop unico de simulacao
+%   6) Plots selecionados
 % -------------------------------------------------------------------------
 
 clear;
 close all;
 clc;
 
-%% ========================================================================
-% 1 - Planejador de trajetoria
-% ========================================================================
-% Aqui ficam todas as informacoes da trajetoria.
-% A trajetoria e gerada primeiro porque dela vem o tempo final da simulacao.
-
-trajConfig = struct();
-
-trajConfig.type         = "quad";   % "quad", "testZ", "testX", "testY", "testXY", "testXYZ"
-trajConfig.repetitions  = 3;        % numero de voltas/repeticoes
-trajConfig.segmentTime  = 10;        % tempo de cada segmento [s]
-trajConfig.yawDesired   = 0;        % yaw desejado [rad]
-trajConfig.Ts           = 0.01;     % passo de amostragem da trajetoria [s]
-trajConfig.plot         = false;     % plota somente a trajetoria planejada
-
-traj = TrajectoryPlanner5Order( ...
-    trajConfig.type, ...
-    trajConfig.plot, ...
-    trajConfig.repetitions, ...
-    "Ts", trajConfig.Ts, ...
-    "TempoSegmento", trajConfig.segmentTime, ...
-    "YawDesejado", trajConfig.yawDesired);
-
-% Guarda a trajetoria dentro da configuracao para o loop principal usar.
-trajConfig.traj = traj;
-
-% Tempo total real da trajetoria.
-trajConfig.tf = traj.t(end);
-
-% Duracao de cada volta.
-trajConfig.lapDuration = traj.t(end) / trajConfig.repetitions;
-
-fprintf('\n--- Trajetoria ---\n');
-fprintf('Tipo: %s\n', trajConfig.type);
-fprintf('Numero de repeticoes: %d\n', trajConfig.repetitions);
-fprintf('Tempo de cada segmento: %.2f s\n', trajConfig.segmentTime);
-fprintf('Tempo total da trajetoria: %.2f s\n', trajConfig.tf);
+projectRoot = fileparts(mfilename('fullpath'));
+addpath(genpath(projectRoot));
 
 %% ========================================================================
-% 2 - Criacao do modelo do quadrotor
+% OPCOES GERAIS DISPONIVEIS
 % ========================================================================
-% Aqui entram as informacoes fisicas usadas para estimar massa, inercia,
-% comprimento de braco e coeficientes aerodinamicos.
+% Modelo do quadrotor:
+%   Material:
+%       "CarbonFiber"
+%
+% Simulacao / trajetoria:
+%   TrajectoryType:
+%       "quad"       -> trajetoria quadrada/principal do projeto
+%       "testz"      -> subida vertical simples
+%       "testx"      -> subida + deslocamento em x
+%       "testy"      -> subida + deslocamento em y
+%       "testxy"     -> subida + deslocamento em x e y
+%       "testxyz"    -> teste em x, y e z
+%       "hex"        -> trajetoria hexagonal
+%       "hexagon"    -> mesmo que "hex"
+%
+%   IntegrationMethod:
+%       "RK4"
+%       "Euler"
+%
+% Disturbios por volta:
+%   DisturbanceMode:
+%       "nominal"    -> sem disturbios
+%       "mass"       -> variacao de massa por volta
+%       "wind"       -> forca externa/vento por volta
+%       "masswind"   -> variacao de massa + vento por volta
+%
+% Controladores:
+%   PositionType:
+%       "P", "PD", "PID"
+%   AttitudeType:
+%       "P", "PD", "PID"
+%
+% Plots:
+%   Todos os campos aceitam true ou false:
+%       Trajectory, States, Errors, Mass, Motors, Animation
 
-quadConfig = struct();
+%% ========================================================================
+% 1 - Modelo nominal do quadrotor
+% ========================================================================
+% Parametros aceitos por QuadrotorModel:
+%
+%   "Material"          -> string. Atualmente implementado: "CarbonFiber".
+%   "Geometry"          -> vetor [L W H] em cm.
+%   "HoverSpeed"        -> velocidade angular de hover [rad/s].
+%   "OmegaMin"          -> limite inferior dos motores [rad/s].
+%   "OmegaMax"          -> limite superior dos motores [rad/s].
+%   "MaxTiltAngle"      -> inclinacao maxima permitida [rad].
+%   "MaxThrustFactor"   -> fator para limite superior de empuxo.
+%
+% Valores como OmegaMax, MaxTiltAngle e MaxThrustFactor ficam no modelo.
+% Caso o usuario informe um valor, ele sobrescreve o valor padrao.
 
-quadConfig.material  = "CarbonFiber";
-quadConfig.droneGeom = [20 5 1];    % [L W H] em centimetros
-quadConfig.w_hover   = 1000;        % velocidade angular de hover [rad/s]
+quadConfig = QuadrotorModel( ...
+    "Material", "CarbonFiber", ...
+    "Geometry", [20 5 1], ...          % [L W H] em cm
+    "HoverSpeed", 1000, ...            % [rad/s]
+    "OmegaMin", 0, ...                 % [rad/s]
+    "OmegaMax", 5000, ...              % [rad/s]
+    "MaxTiltAngle", deg2rad(30), ...   % [rad]
+    "MaxThrustFactor", 2.5);           % Tmax = fator*m*g
 
-[I_til, quadNominal] = EstimatedQuadParameters( ...
-    quadConfig.material, ...
-    quadConfig.droneGeom, ...
-    quadConfig.w_hover);
-
-% Guarda o modelo ja estimado para evitar recalcular dentro do loop.
-quadConfig.I_til = I_til;
-quadConfig.quadNominal = quadNominal;
-
-fprintf('\n--- Modelo do quadrotor ---\n');
+fprintf('\n--- Modelo nominal ---\n');
 fprintf('Material: %s\n', quadConfig.material);
-fprintf('Geometria [L W H]: [%.2f %.2f %.2f] cm\n', quadConfig.droneGeom);
-fprintf('Massa nominal: %.6f kg\n', quadNominal.mass);
-fprintf('Comprimento efetivo do braco: %.6f m\n', quadNominal.armLength);
-fprintf('Tensor de inercia [kg.m^2]:\n');
-disp(I_til);
+fprintf('Massa nominal: %.6f kg\n', quadConfig.mass);
+fprintf('Braco efetivo: %.6f m\n', quadConfig.armLength);
+fprintf('Omega maximo: %.2f rad/s\n', quadConfig.actuator.omegaMax);
+fprintf('Angulo maximo: %.2f graus\n', rad2deg(quadConfig.control.maxTiltAngle));
+fprintf('Fator de empuxo maximo: %.2f\n', quadConfig.control.maxThrustFactor);
 
 %% ========================================================================
-% 3 - Configuracao de disturbios
+% 2 - Configuracao da simulacao
 % ========================================================================
-% Modos disponiveis:
-%   "Nominal"      -> sem disturbio
-%   "MassChange"  -> muda massa por volta
-%   "Wind"        -> aplica vento por volta
-%   "MassWind"    -> muda massa e aplica vento
-%   "TrajectoryOnly" -> apenas plota/gera a trajetoria
+% Parametros aceitos por SimulationPlanner:
+%
+%   "TrajectoryType"      -> "quad", "testz", "testx", "testy", "testxy",
+%                            "testxyz", "hex" ou "hexagon".
+%   "Ts"                  -> passo de simulacao [s].
+%   "SegmentTime"         -> tempo para ir de um waypoint ao proximo [s].
+%   "Repetitions"         -> numero de voltas completas.
+%   "YawDesired"          -> yaw desejado da trajetoria [rad].
+%   "IntegrationMethod"   -> "RK4" ou "Euler".
+%   "InitialState"        -> vetor de estado inicial 12x1.
+%
+% Conceitos:
+%   waypoint       -> ponto da trajetoria.
+%   segmento       -> movimento do waypoint i para o waypoint i+1.
+%   volta          -> execucao completa de todos os segmentos da trajetoria.
+%   segmentTime    -> tempo de um segmento.
+%   lapTime        -> tempo de uma volta completa.
 
-flightConfig = struct();
-
-flightConfig.mode = "Wind";
-
-% Numero de voltas usado pelo gerenciador de condicoes de voo.
-flightConfig.numLaps = trajConfig.repetitions;
-flightConfig.lapDuration = trajConfig.lapDuration;
-
-% -------------------------------------------------------------------------
-% Mudanca de massa
-% -------------------------------------------------------------------------
-% Formato:
-%   [volta, delta_massa_kg]
-
-flightConfig.mass.enabled = true;
-
-flightConfig.mass.byLap = [
-    1,  0.00;
-    2, -0.25;
-    3, -0.5
-];
-
-% -------------------------------------------------------------------------
-% Vento
-% -------------------------------------------------------------------------
-% Formato:
-%   [volta, Fx_N, Fy_N, Fz_N]
-
-flightConfig.wind.enabled = true;
-flightConfig.wind.referenceFrame = "inertial";
-
-flightConfig.wind.byLap = [
-    1, 0.0, 0.0, 0.0;
-    2, 1.2, 0.0, 0.0;
-    3, 0.5, 0.5, 0.0
-];
-
-fprintf('\n--- Condicoes de voo ---\n');
-fprintf('Modo: %s\n', flightConfig.mode);
-fprintf('Duracao de cada volta: %.2f s\n', flightConfig.lapDuration);
-
-%% ========================================================================
-% 4 - Configuracao da simulacao
-% ========================================================================
-% O tempo final da simulacao deve vir da trajetoria.
-% Assim, se voce mudar numero de repeticoes ou tempo de segmento,
-% a simulacao acompanha automaticamente.
-
-simConfig = struct();
-
-simConfig.method = "RK4";           % "Euler" ou "RK4"
-simConfig.Ts     = trajConfig.Ts;   % passo da simulacao [s]
-simConfig.tf     = traj.t(end);     % tempo final automatico [s]
-
-% Estado inicial:
-% state = [x y z x_dot y_dot z_dot phi theta psi p q r]'
-simConfig.initialState = zeros(12,1);
+simConfig = SimulationPlanner( ...
+    "TrajectoryType", "quad", ...
+    "Ts", 0.01, ...
+    "SegmentTime", 10, ...
+    "Repetitions", 3, ...
+    "YawDesired", 0, ...
+    "IntegrationMethod", "Euler", ...
+    "InitialState", zeros(12,1));
 
 fprintf('\n--- Simulacao ---\n');
-fprintf('Metodo de integracao: %s\n', simConfig.method);
-fprintf('Ts: %.4f s\n', simConfig.Ts);
-fprintf('tf: %.2f s\n', simConfig.tf);
+fprintf('Trajetoria: %s\n', simConfig.trajectory.type);
+fprintf('Waypoints por volta: %d\n', simConfig.trajectory.numWaypointsPerLap);
+fprintf('Segmentos por volta: %d\n', simConfig.trajectory.numSegmentsPerLap);
+fprintf('Tempo por segmento: %.2f s\n', simConfig.time.segmentTime);
+fprintf('Tempo por volta: %.2f s\n', simConfig.time.lapTime);
+fprintf('Numero de voltas: %d\n', simConfig.time.repetitions);
+fprintf('Tempo final: %.2f s\n', simConfig.time.tf);
+fprintf('Metodo: %s\n', simConfig.integration.method);
 
 %% ========================================================================
-% 5 - Configuracao dos controladores
+% 3 - Plano de voo: trajetoria + disturbios por volta
 % ========================================================================
-% Fluxo simples dos ganhos:
+% Parametros aceitos por FlightPlanBuilder:
 %
-%   controlConfig.gainSource = "arquivo"
-%       -> usa PositionPIDGains.m e AttitudePIDGains.m
+%   "DisturbanceMode" -> define quais disturbios serao usados.
+%       "nominal"    -> sem disturbios
+%       "mass"       -> variacao de massa
+%       "wind"       -> vento/forca externa inercial
+%       "masswind"   -> variacao de massa + vento
 %
-%   controlConfig.gainSource = "estimador"
-%       -> calcula ganhos PD/PID usando tempo de pico e estabilizacao
+%   "MassByLap" usa o formato:
+%       [volta, delta_massa_kg]
 %
-% O vetor gainSpec tem o formato:
-%   [tp_pos, ts_pos, tp_att, ts_att]
+%   "WindByLap" usa o formato:
+%       [volta, Fx_N, Fy_N, Fz_N]
 %
-% onde:
-%   tp_pos, ts_pos -> usados igualmente para x, y, z
-%   tp_att, ts_att -> usados igualmente para phi, theta, psi
+% Observacao:
+%   Os disturbios sao definidos por volta, nao por segmento.
+%   A mudanca de massa sempre e interpretada como delta em relacao a massa
+%   nominal do quadrotor.
+%   O vento sempre e interpretado como forca externa em Newton no
+%   referencial inercial.
 
-controlConfig = struct();
-
-% -------------------------------------------------------------------------
-% Escolha dos controladores
-% -------------------------------------------------------------------------
-controlConfig.position.type = "PID";       % "P", "PD" ou "PID"
-controlConfig.attitude.type = "PD";       % "P", "PD" ou "PID"
-
-% -------------------------------------------------------------------------
-% Frequencia dos controladores
-% -------------------------------------------------------------------------
-controlConfig.position.updateFreq = 10;   % [Hz]
-controlConfig.attitude.updateFreq = 100;  % [Hz]
-
-% -------------------------------------------------------------------------
-% Origem dos ganhos
-% -------------------------------------------------------------------------
-% "arquivo"   -> usa os arquivos de ganhos ja existentes
-% "estimador" -> calcula ganhos por tempo de pico e estabilizacao
-% -------------------------------------------------------------------------
-controlConfig.gainSource = "arquivo";
-
-% -------------------------------------------------------------------------
-% Especificacao usada apenas quando gainSource = "estimador"
-% -------------------------------------------------------------------------
-controlConfig.gainSpec = [
-    1.00, 2.00, ...
-    0.12, 0.25
-];
-
-% Parametros auxiliares do estimador
-controlConfig.settlingFactor = 4.0;  % 3.0 ~= 5%, 4.0 ~= 2%, 4.6 ~= 1%
-controlConfig.pidGamma = 5;          % usado apenas no PID
-
-fprintf('\n--- 5) Controladores ---\n');
-fprintf('Posicao: %s @ %.3f Hz\n', ...
-    controlConfig.position.type, controlConfig.position.updateFreq);
-fprintf('Atitude: %s @ %.3f Hz\n', ...
-    controlConfig.attitude.type, controlConfig.attitude.updateFreq);
-fprintf('Origem dos ganhos: %s\n', controlConfig.gainSource);
-
-%% ========================================================================
-% 6 - Loop principal
-% ========================================================================
-
-plotSimulation = true;
-
-sim = ControlledMainLoop( ...
-    quadConfig, ...
-    trajConfig, ...
+flightPlan = FlightPlanBuilder( ...
     simConfig, ...
-    controlConfig, ...
-    flightConfig, ...
-    plotSimulation);
+    quadConfig, ...
+    "DisturbanceMode", "mass", ...
+    "MassByLap", [ ...
+        1,  0.00; ...
+        2, -0.25; ...
+        3, 0.50], ...
+    "WindByLap", [ ...
+        1, 0.0, 0.0, 0.0; ...
+        2, 0.5, 0.0, 0.0; ...
+        3, 0.5, 0.5, 0.0]);
+
+fprintf('\n--- Plano de voo ---\n');
+fprintf('Modo de disturbio: %s\n', flightPlan.disturbance.mode);
+fprintf('Amostras: %d\n', numel(flightPlan.t));
 
 %% ========================================================================
-% 7 - Plots / Animacao
+% 4 - Controladores
+% ========================================================================
+% Parametros aceitos por ControllersConfig:
+%
+%   "PositionType"         -> "P", "PD" ou "PID".
+%   "AttitudeType"         -> "P", "PD" ou "PID".
+%   "PositionFrequency"    -> frequencia de atualizacao do controle de posicao [Hz].
+%   "AttitudeFrequency"    -> frequencia de atualizacao do controle de atitude [Hz].
+%
+% Observacao:
+%   Os ganhos sempre sao carregados dos arquivos:
+%       PositionGains.m
+%       AttitudeGains.m
+
+controllersConfig = ControllersConfig( ...
+    "PositionType", "PD", ...
+    "AttitudeType", "PD", ...
+    "PositionFrequency", 10, ...
+    "AttitudeFrequency", 100);
+
+fprintf('\n--- Controladores ---\n');
+fprintf('Posicao: %s @ %.2f Hz\n', controllersConfig.position.type, controllersConfig.position.updateFrequency);
+fprintf('Atitude: %s @ %.2f Hz\n', controllersConfig.attitude.type, controllersConfig.attitude.updateFrequency);
+
+%% ========================================================================
+% 5 - Loop unico de simulacao
 % ========================================================================
 
-runAnimation = true;
+simData = SimulationLoop( ...
+    simConfig, ...
+    quadConfig, ...
+    controllersConfig, ...
+    flightPlan);
 
-if runAnimation
-    AnimateQuadrotorSimulation(sim, ...
-        "Step", 10, ...
-        "DelayMode", "fixed", ...
-        "FixedDelay", 0.03, ...
-        "ColorByLap", true, ...
-        "Theme", "dark");
-end
+%% ========================================================================
+% 6 - Plots
+% ========================================================================
+% Parametros aceitos por PlotConfig:
+%
+%   "Trajectory"        -> true/false. Plota trajetoria 3D nominal e realizada.
+%   "States"            -> true/false. Plota estados no tempo.
+%   "Errors"            -> true/false. Plota erros de rastreamento.
+%   "Mass"              -> true/false. Plota massa ao longo do tempo.
+%   "Motors"            -> true/false. Plota velocidades dos motores.
+%   "Animation"         -> true/false. Executa animacao 3D.
+%   "AnimationStep"     -> inteiro >= 1. Pula amostras na animacao.
+%   "AnimationPeriod"   -> periodo do timer da animacao [s].
+%
+% Observacao:
+%   A animacao roda com timer, entao ela nao prende o MATLAB em um loop
+%   continuo. Use os botoes da propria figura para pausar, parar ou reiniciar.
 
-fprintf('\nSimulacao finalizada.\n');
+plotConfig = PlotConfig( ...
+    "Trajectory", true, ...
+    "States", true, ...
+    "Errors", true, ...
+    "Mass", true, ...
+    "Motors", true, ...
+    "Animation", true, ...
+    "AnimationStep", 10, ...
+    "AnimationPeriod", 0.03);
+
+PlotSimulation(simData, plotConfig);
