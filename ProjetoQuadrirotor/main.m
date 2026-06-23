@@ -158,7 +158,7 @@ fprintf('Metodo: %s\n', simConfig.integration.method);
 flightPlan = FlightPlanBuilder( ...
     simConfig, ...
     quadConfig, ...
-    "DisturbanceMode", "wind", ...
+    "DisturbanceMode", "nominal", ...
     "MassByLap", [ ...
         1,  0.00; ...
         2, -0.50; ...
@@ -173,6 +173,39 @@ flightPlan = FlightPlanBuilder( ...
 fprintf('\n--- Plano de voo ---\n');
 fprintf('Modo de disturbio: %s\n', flightPlan.disturbance.mode);
 fprintf('Amostras: %d\n', numel(flightPlan.t));
+
+%% ========================================================================
+% 3.1 - Disturbio de medicao
+% ========================================================================
+% Este disturbio nao altera a dinamica real do drone.
+% Ele altera apenas os estados medidos usados pelos controladores.
+%
+% Estados disponiveis:
+%   r     -> [x; y; z]
+%   v     -> [vx; vy; vz]
+%   eta   -> [phi; theta; psi]
+%   omega -> [p; q; r]
+%
+% Tipo disponivel nesta versao:
+%   "whiteNoise"
+
+noiseParams = NoiseParams();
+
+noiseParams.enable = true;
+noiseParams.disturbanceType = "whiteNoise";
+
+noiseParams.r.enable     = true;    % x, y, z
+noiseParams.v.enable     = true;   % vx, vy, vz
+noiseParams.eta.enable   = true;    % phi, theta, psi
+noiseParams.omega.enable = true;   % p, q, r
+
+fprintf('\n--- Disturbio de medicao ---\n');
+fprintf('Ativo: %d\n', noiseParams.enable);
+fprintf('Tipo: %s\n', noiseParams.disturbanceType);
+fprintf('r [x y z]: %d\n', noiseParams.r.enable);
+fprintf('v [vx vy vz]: %d\n', noiseParams.v.enable);
+fprintf('eta [phi theta psi]: %d\n', noiseParams.eta.enable);
+fprintf('omega [p q r]: %d\n', noiseParams.omega.enable);
 
 %% ========================================================================
 % 4 - Controladores
@@ -207,7 +240,8 @@ simData = SimulationLoop( ...
     simConfig, ...
     quadConfig, ...
     controllersConfig, ...
-    flightPlan);
+    flightPlan, ...
+    noiseParams);
 
 %% ========================================================================
 % 6 - Plots
@@ -235,7 +269,7 @@ plotConfig = PlotConfig( ...
     "Motors", true, ...
     "LapComparison", true, ...
     "Animation", true, ...
-    "AnimationStep", 10, ...
-    "AnimationPeriod", 0.01);
+    "AnimationStep", 20, ...
+    "AnimationPeriod", 0.05);
 
 PlotSimulation(simData, plotConfig);

@@ -1,4 +1,4 @@
-function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flightPlan)
+function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flightPlan, noiseParams)
 % SimulationLoop
 % -------------------------------------------------------------------------
 % Loop unico de simulacao.
@@ -52,6 +52,9 @@ function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flig
         controllersConfig, ...
         flightPlan);
 
+    simData.state.xMeasured = nan(12, N);
+    simData.config.noise = noiseParams;
+
     %% Estados internos dos controladores
     positionState.integralError = zeros(3,1);
     attitudeState.integralError = zeros(3,1);
@@ -85,6 +88,14 @@ function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flig
 
         stateNow = simData.state.x(:, k);
 
+        controlStateNow = stateNow;
+        controlStateNow(idx.position) = ApplyNoise('r', stateNow(idx.position), noiseParams);
+        controlStateNow(idx.velocity) = ApplyNoise('v', stateNow(idx.velocity), noiseParams);
+        controlStateNow(idx.attitude) = ApplyNoise('eta', stateNow(idx.attitude), noiseParams);
+        controlStateNow(idx.bodyRate) = ApplyNoise('omega', stateNow(idx.bodyRate), noiseParams);
+
+        simData.state.xMeasured(:, k) = controlStateNow;
+
         ref = GetReferenceAtStep(flightPlan, k);
         condition = GetConditionAtStep(flightPlan, k);
 
@@ -113,7 +124,7 @@ function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flig
         % O controlador recebe quadControl, ou seja, o modelo nominal.
         if k == 1 || mod(k-1, positionStep) == 0 || resetNow
             [posOut, positionState] = PositionControlLoop( ...
-                stateNow, ...
+                controlStateNow, ...
                 ref, ...
                 controllersConfig.position, ...
                 quadControl, ...
@@ -123,7 +134,7 @@ function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flig
         %% Controle de atitude
         if k == 1 || mod(k-1, attitudeStep) == 0 || resetNow
             [attOut, attitudeState] = AttitudeControlLoop( ...
-                stateNow, ...
+                controlStateNow, ...
                 posOut.attitudeDesired, ...
                 controllersConfig.attitude, ...
                 attitudeState);
@@ -193,6 +204,14 @@ function simData = SimulationLoop(simConfig, quadConfig, controllersConfig, flig
     end
 
     stateNow = simData.state.x(:, k);
+
+    controlStateNow = stateNow;
+    controlStateNow(idx.position) = ApplyNoise('r', stateNow(idx.position), noiseParams);
+    controlStateNow(idx.velocity) = ApplyNoise('v', stateNow(idx.velocity), noiseParams);
+    controlStateNow(idx.attitude) = ApplyNoise('eta', stateNow(idx.attitude), noiseParams);
+    controlStateNow(idx.bodyRate) = ApplyNoise('omega', stateNow(idx.bodyRate), noiseParams);
+
+    simData.state.xMeasured(:, k) = controlStateNow;
 
     ref = GetReferenceAtStep(flightPlan, k);
     condition = GetConditionAtStep(flightPlan, k);
