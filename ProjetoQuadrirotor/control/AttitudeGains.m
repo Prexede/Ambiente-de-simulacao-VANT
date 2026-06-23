@@ -10,7 +10,7 @@ function gains = AttitudeGains()
     gains.PD.Kp = diag([0.05, 0.05, 0.02]);
     gains.PD.Kd = diag([0.01, 0.01, 0.005]);
 
-    gains.PID.Kp = diag([8.0, 8.0, 4.0]);
-    gains.PID.Ki = diag([0.10, 0.10, 0.05]);
-    gains.PID.Kd = diag([2.0, 2.0, 1.0]);
+    gains.PID.Kp = diag([0.60, 0.60, 1.00]);
+    gains.PID.Ki = diag([0.005, 0.005, 0.015]);
+    gains.PID.Kd = diag([0.90, 0.90, 1.30]);
 end

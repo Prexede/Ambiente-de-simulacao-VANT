@@ -79,7 +79,7 @@ function stateDot = QuadrotorDynamics(state, motorOmega, quadConfig, disturbance
 
     attitudeDot = EulerRatesZYX(phi, theta, omegaBody);
 
-    omegaDot = inertia \ (tauMotor - cross(omegaBody, inertia*omegaBody));
+    omegaDot = inertia \ (tauMotor + disturbance.torqueBody - cross(omegaBody, inertia*omegaBody));
 
     stateDot = [
         positionDot;
@@ -92,6 +92,7 @@ end
 function disturbance = DefaultDisturbance()
     disturbance.forceInertial = zeros(3,1);
     disturbance.forceBody = zeros(3,1);
+    disturbance.torqueBody = zeros(3,1);
 end
 
 function disturbance = CompleteDisturbance(disturbance)
@@ -104,6 +105,9 @@ function disturbance = CompleteDisturbance(disturbance)
 
     disturbance.forceBody = ReadVector3Field(disturbance, ...
         ["forceBody", "windForceBody"], zeros(3,1));
+
+    disturbance.torqueBody = ReadVector3Field(disturbance, ...
+        ["torqueBody", "externalTorqueBody"], zeros(3,1));
 end
 
 function value = ReadVector3Field(s, names, defaultValue)

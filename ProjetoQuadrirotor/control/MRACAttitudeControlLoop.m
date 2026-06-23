@@ -1,0 +1,99 @@
+function [attOut, controllerState] = MRACAttitudeControlLoop(state, attitudeDesired, controllerConfig, mracParams, controllerState, quadConfig)
+% MRACAttitudeControlLoop
+% -------------------------------------------------------------------------
+% Controle MRAC dos tres angulos de atitude para o modelo MRAC_Test.
+% Canais: roll, pitch e yaw.
+% -------------------------------------------------------------------------
+
+    if nargin < 5 || isempty(controllerState)
+        controllerState = struct();
+    end
+
+    idx = StateIndex();
+
+    attitude = state(idx.attitude);
+    bodyRate = state(idx.bodyRate);
+
+    attitudeDesired = attitudeDesired(:);
+
+    attitude(3) = WrapAngle(attitude(3));
+    attitudeDesired(3) = WrapAngle(attitudeDesired(3));
+
+    p = bodyRate(1);
+    q = bodyRate(2);
+    r = bodyRate(3);
+
+    dtController = controllerConfig.updatePeriod;
+
+    if ~isfield(controllerState, "roll")
+        controllerState.roll = [];
+    end
+    if ~isfield(controllerState, "pitch")
+        controllerState.pitch = [];
+    end
+    if ~isfield(controllerState, "yaw")
+        controllerState.yaw = [];
+    end
+
+    [tauPhi, controllerState.roll] = MRACSecondOrder( ...
+        attitude(1), p, attitudeDesired(1), q*r, ...
+        mracParams.roll, controllerState.roll, dtController);
+
+    [tauTheta, controllerState.pitch] = MRACSecondOrder( ...
+        attitude(2), q, attitudeDesired(2), p*r, ...
+        mracParams.pitch, controllerState.pitch, dtController);
+
+    if isstruct(controllerState.yaw) && isfield(controllerState.yaw, "xRef")
+        controllerState.yaw.xRef(1) = WrapAngle(controllerState.yaw.xRef(1));
+        psiCommand = controllerState.yaw.xRef(1) + ...
+            WrapAngle(attitudeDesired(3) - controllerState.yaw.xRef(1));
+    else
+        psiCommand = attitudeDesired(3);
+    end
+
+    yawCouplingBasis = 0;
+
+    [tauPsi, controllerState.yaw] = MRACSecondOrder( ...
+        attitude(3), r, psiCommand, yawCouplingBasis, ...
+        mracParams.yaw, controllerState.yaw, dtController);
+
+    controllerState.yaw.xRef(1) = WrapAngle(controllerState.yaw.xRef(1));
+    controllerState.yaw.error = [ ...
+        WrapAngle(attitude(3) - controllerState.yaw.xRef(1)); ...
+        r - controllerState.yaw.xRef(2)];
+
+    torqueCommand = [tauPhi; tauTheta; tauPsi];
+
+    attOut = struct();
+    attOut.torque = torqueCommand;
+    attOut.attitudeDesired = attitudeDesired;
+    attOut.attitudeError = [ ...
+        WrapAngle(attitudeDesired(1) - attitude(1)); ...
+        WrapAngle(attitudeDesired(2) - attitude(2)); ...
+        WrapAngle(attitudeDesired(3) - attitude(3))];
+    attOut.rateError = -bodyRate;
+    attOut.referenceState = [ ...
+        controllerState.roll.xRef, ...
+        controllerState.pitch.xRef, ...
+        controllerState.yaw.xRef];
+    attOut.error = [ ...
+        controllerState.roll.error, ...
+        controllerState.pitch.error, ...
+        controllerState.yaw.error];
+    attOut.KxHat = [ ...
+        controllerState.roll.KxHat, ...
+        controllerState.pitch.KxHat, ...
+        controllerState.yaw.KxHat];
+    attOut.KrHat = [ ...
+        controllerState.roll.KrHat; ...
+        controllerState.pitch.KrHat; ...
+        controllerState.yaw.KrHat];
+    attOut.KdHat = [ ...
+        controllerState.roll.KdHat; ...
+        controllerState.pitch.KdHat; ...
+        controllerState.yaw.KdHat];
+    attOut.OHat = [ ...
+        controllerState.roll.OHat; ...
+        controllerState.pitch.OHat; ...
+        controllerState.yaw.OHat];
+end

@@ -24,6 +24,10 @@ function PlotSimulation(simData, plotConfig)
         PlotErrors(simData);
     end
 
+    if isfield(simData, "mrac")
+        PlotMRACReference(simData);
+    end
+
     if plotConfig.mass
         PlotMassVariation(simData);
     end
