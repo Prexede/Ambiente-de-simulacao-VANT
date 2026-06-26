@@ -13,11 +13,12 @@ function trajectory = GenerateTrajectory(simConfig)
     segmentTime = simConfig.time.segmentTime;
     totalSegments = simConfig.time.totalSegments;
     yawDesired = simConfig.trajectory.yawDesired;
+    yawMode = simConfig.trajectory.yawMode;
+    yawTargetXY = simConfig.trajectory.yawTargetXY;
 
     r = zeros(3, N);
     v = zeros(3, N);
     a = zeros(3, N);
-    psi = yawDesired*ones(1, N);
 
     lapIndex = zeros(1, N);
     segmentGlobal = zeros(1, N);
@@ -53,6 +54,8 @@ function trajectory = GenerateTrajectory(simConfig)
         segmentLocalTime(k) = localTime;
     end
 
+    psi = BuildYawReference(r, yawDesired, yawMode, yawTargetXY);
+
     trajectory = struct();
     trajectory.ref.r = r;
     trajectory.ref.v = v;
@@ -67,6 +70,44 @@ function trajectory = GenerateTrajectory(simConfig)
     trajectory.waypoints.base = waypoints;
 end
 
+function psi = BuildYawReference(r, yawDesired, yawMode, yawTargetXY)
+
+    N = size(r, 2);
+    yawMode = lower(strtrim(string(yawMode)));
+
+    switch yawMode
+        case "const"
+            psi = yawDesired*ones(1, N);
+
+        case {"target"}
+            xTarget = yawTargetXY(1);
+            yTarget = yawTargetXY(2);
+
+            xDesired = r(1, :);
+            yDesired = r(2, :);
+
+            psi = atan2(yTarget - yDesired, xTarget - xDesired);
+
+            distanceToTarget = hypot(xTarget - xDesired, yTarget - yDesired);
+            invalidYaw = distanceToTarget < 1e-9;
+
+            for k = 1:N
+                if invalidYaw(k)
+                    if k == 1
+                        psi(k) = yawDesired;
+                    else
+                        psi(k) = psi(k - 1);
+                    end
+                end
+            end
+
+            psi = unwrap(psi);
+
+        otherwise
+            error('YawMode "%s" nao reconhecido.', yawMode);
+    end
+end
+
 function [q, qd, qdd] = QuinticSegment(q0, qf, tf, t)
     a0 = q0;
     a1 = 0;
@@ -79,3 +120,4 @@ function [q, qd, qdd] = QuinticSegment(q0, qf, tf, t)
     qd = a1 + 2*a2*t + 3*a3*t^2 + 4*a4*t^3 + 5*a5*t^4;
     qdd = 2*a2 + 6*a3*t + 12*a4*t^2 + 20*a5*t^3;
 end
+

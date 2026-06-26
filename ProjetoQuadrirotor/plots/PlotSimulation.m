@@ -2,10 +2,6 @@ function PlotSimulation(simData, plotConfig)
 % PlotSimulation
 % -------------------------------------------------------------------------
 % Executa os plots selecionados.
-%
-% Observacao:
-%   A animacao e chamada por ultimo e roda em uma figura propria usando
-%   timer. Assim, ela nao trava a janela principal do MATLAB.
 % -------------------------------------------------------------------------
 
     if nargin < 2 || isempty(plotConfig)
@@ -22,10 +18,6 @@ function PlotSimulation(simData, plotConfig)
 
     if plotConfig.errors
         PlotErrors(simData);
-    end
-
-    if isfield(simData, "mrac")
-        PlotMRACReference(simData);
     end
 
     if plotConfig.mass
@@ -46,3 +38,4 @@ function PlotSimulation(simData, plotConfig)
         AnimateQuadrotorSimulation(simData, plotConfig);
     end
 end
+

@@ -25,6 +25,8 @@ function simConfig = SimulationPlanner(varargin)
     addParameter(p, "SegmentTime", 5, @(x) isnumeric(x) && isscalar(x) && x > 0);
     addParameter(p, "Repetitions", 1, @(x) isnumeric(x) && isscalar(x) && x >= 1);
     addParameter(p, "YawDesired", 0, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, "YawMode", "constant");
+    addParameter(p, "YawTargetXY", [0 0], @(x) isnumeric(x) && numel(x) == 2);
     addParameter(p, "IntegrationMethod", "RK4");
     addParameter(p, "InitialState", zeros(12,1), @(x) isnumeric(x) && numel(x) == 12);
 
@@ -37,6 +39,8 @@ function simConfig = SimulationPlanner(varargin)
     segmentTime = p.Results.SegmentTime;
     repetitions = round(p.Results.Repetitions);
     yawDesired = p.Results.YawDesired;
+    yawMode = string(p.Results.YawMode);
+    yawTargetXY = p.Results.YawTargetXY(:);
     integrationMethod = string(p.Results.IntegrationMethod);
     initialState = p.Results.InitialState(:);
 
@@ -71,6 +75,8 @@ function simConfig = SimulationPlanner(varargin)
 
     simConfig.trajectory.type = trajectoryType;
     simConfig.trajectory.yawDesired = yawDesired;
+    simConfig.trajectory.yawMode = yawMode;
+    simConfig.trajectory.yawTargetXY = yawTargetXY;
     simConfig.trajectory.waypoints = waypoints;
     simConfig.trajectory.numWaypointsPerLap = numWaypointsPerLap;
     simConfig.trajectory.numSegmentsPerLap = numSegmentsPerLap;
@@ -81,3 +87,4 @@ function simConfig = SimulationPlanner(varargin)
     simConfig.reset.stateEachLap = logical(p.Results.ResetStateEachLap);
     simConfig.reset.state = initialState;
 end
+
