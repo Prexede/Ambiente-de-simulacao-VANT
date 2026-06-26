@@ -1,16 +1,12 @@
 function gains = AttitudeGains()
-% AttitudeGains
-% -------------------------------------------------------------------------
-% Ganhos iniciais dos controladores de atitude.
-% Ordem: [phi theta psi].
-% -------------------------------------------------------------------------
 
-    gains.P.Kp = diag([4.0, 4.0, 2.0]);
+    gains.P.Kp = diag([0.30, 0.30, 0.18]);
 
-    gains.PD.Kp = diag([0.05, 0.05, 0.02]);
-    gains.PD.Kd = diag([0.01, 0.01, 0.005]);
+    gains.PD.Kp = diag([0.28, 0.28, 0.18]);
+    gains.PD.Kd = diag([0.12, 0.12, 0.16]);
 
-    gains.PID.Kp = diag([0.60, 0.60, 1.00]);
-    gains.PID.Ki = diag([0.005, 0.005, 0.015]);
-    gains.PID.Kd = diag([0.90, 0.90, 1.30]);
+    gains.PID.Kp = diag([0.22, 0.22, 0.14]);
+    gains.PID.Ki = diag([0.0010, 0.0010, 0.0008]);
+    gains.PID.Kd = diag([0.15, 0.15, 0.18]);
+
 end

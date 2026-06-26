@@ -23,7 +23,7 @@ function mracParams = MRACParams(quadConfig)
 
     gammaAlt.x = 0.05;   % KxHat: estados [z; zDot]
     gammaAlt.r = 0.05;   % KrHat: referencia z_cmd
-    gammaAlt.d = 10.00;   % KdHat: disturbio constante, importante para massa
+    gammaAlt.d = 1.00;   % KdHat: disturbio constante, importante para massa
     gammaAlt.o = 0.00;   % OHat: nao usado na altitude
 
 
@@ -32,12 +32,12 @@ function mracParams = MRACParams(quadConfig)
     gammaAtt.x = 0.02;   % KxHat: estados [angulo; velocidade angular]
     gammaAtt.r = 0.02;   % KrHat: referencia angular
     gammaAtt.d = 0.01;   % KdHat: disturbio constante
-    gammaAtt.o = 0.00;   % OHat: acoplamento. deixe 0 por enquanto
+    gammaAtt.o = 0.01;   % OHat: acoplamento. deixe 0 por enquanto
 
 
     %% Limites da projecao adaptativa
 
-    enableProjection = true;
+    enableProjection = false;
 
     limitsAlt.Kx = 200.0;
     limitsAlt.Kr = 200.0;
