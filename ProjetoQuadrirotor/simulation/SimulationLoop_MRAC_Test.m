@@ -5,8 +5,8 @@ function simData = SimulationLoop_MRAC_Test(simConfig, quadConfig, controllersCo
 %
 % Estrutura:
 %   x/y -> PositionControlLoopXY -> phi_des/theta_des
-%   z   -> MRACAltitudeControlLoop -> thrust
-%   atitude -> MRACAttitudeControlLoop -> torques
+%   z   -> AltitudeControlLoop ou MRACAltitudeControlLoop -> thrust
+%   atitude -> AttitudeControlLoop ou MRACAttitudeControlLoop -> torques
 % -------------------------------------------------------------------------
 
     idx = StateIndex();
@@ -27,10 +27,12 @@ function simData = SimulationLoop_MRAC_Test(simConfig, quadConfig, controllersCo
     controllersConfig.altitude.updateStep = altitudeStep;
     controllersConfig.altitude.actualFrequency = 1/(altitudeStep*Ts);
     controllersConfig.altitude.updatePeriod = altitudeStep*Ts;
+    controllersConfig.altitude.integralLimit = inf;
 
     controllersConfig.attitude.updateStep = attitudeStep;
     controllersConfig.attitude.actualFrequency = 1/(attitudeStep*Ts);
     controllersConfig.attitude.updatePeriod = attitudeStep*Ts;
+    controllersConfig.attitude.integralLimit = inf(3,1);
 
     simData = InitializeSimulationData( ...
         simConfig, ...
@@ -131,23 +133,45 @@ function simData = SimulationLoop_MRAC_Test(simConfig, quadConfig, controllersCo
         end
 
         if k == 1 || mod(k-1, altitudeStep) == 0 || resetNow
-            [altOut, altitudeState] = MRACAltitudeControlLoop( ...
-                controlStateNow, ...
-                ref.r(3), ...
-                controllersConfig.altitude, ...
-                mracParams.altitude, ...
-                altitudeState, ...
-                quadControl);
+            if controllersConfig.altitude.type == "MRAC"
+                [altOut, altitudeState] = MRACAltitudeControlLoop( ...
+                    controlStateNow, ...
+                    ref.r(3), ...
+                    controllersConfig.altitude, ...
+                    mracParams.altitude, ...
+                    altitudeState, ...
+                    quadControl);
+            else
+                [altOut, altitudeState] = AltitudeControlLoop( ...
+                    controlStateNow, ...
+                    ref, ...
+                    controllersConfig.altitude, ...
+                    quadControl, ...
+                    altitudeState);
+            end
         end
 
         if k == 1 || mod(k-1, attitudeStep) == 0 || resetNow
-            [attOut, attitudeState] = MRACAttitudeControlLoop( ...
-                controlStateNow, ...
-                posOut.attitudeDesired, ...
-                controllersConfig.attitude, ...
-                mracParams.attitude, ...
-                attitudeState, ...
-                quadControl);
+            if controllersConfig.attitude.type == "MRAC"
+                [attOut, attitudeState] = MRACAttitudeControlLoop( ...
+                    controlStateNow, ...
+                    posOut.attitudeDesired, ...
+                    controllersConfig.attitude, ...
+                    mracParams.attitude, ...
+                    attitudeState, ...
+                    quadControl);
+            else
+                [attOut, attitudeState] = AttitudeControlLoop( ...
+                    controlStateNow, ...
+                    posOut.attitudeDesired, ...
+                    controllersConfig.attitude, ...
+                    attitudeState);
+
+                attOut = CompleteClassicAttitudeOutputForStore( ...
+                    attOut, ...
+                    controlStateNow, ...
+                    posOut.attitudeDesired);
+            end
         end
 
         mixerOut = QuadrotorMixer(altOut.thrust, attOut.torque, quadControl);
@@ -164,13 +188,20 @@ function simData = SimulationLoop_MRAC_Test(simConfig, quadConfig, controllersCo
             quadPlant, ...
             disturbance, ...
             simConfig);
+
+        simData.state.x(idx.psi, k+1) = WrapAngle(simData.state.x(idx.psi, k+1));
+
         simData.cmd.thrust(k) = altOut.thrust;
         simData.cmd.thrustRaw(k) = altOut.thrustRaw;
         simData.cmd.torque(:, k) = attOut.torque;
         simData.cmd.motorOmega(:, k) = mixerOut.motorOmega;
         simData.cmd.omegaSquared(:, k) = mixerOut.omegaSquared;
         simData.cmd.attitudeDesired(:, k) = posOut.attitudeDesired;
-        simData.cmd.accelerationCommand(:, k) = posOut.accelerationCommand;
+        accelerationCommandStored = posOut.accelerationCommand;
+        if isfield(altOut, "accelerationCommandZ")
+            accelerationCommandStored(3) = altOut.accelerationCommandZ;
+        end
+        simData.cmd.accelerationCommand(:, k) = accelerationCommandStored;
 
         simData.error.position(:, k) = ref.r - stateNow(idx.position);
         simData.error.velocity(:, k) = ref.v - stateNow(idx.velocity);
@@ -244,7 +275,11 @@ function simData = SimulationLoop_MRAC_Test(simConfig, quadConfig, controllersCo
     simData.cmd.motorOmega(:, k) = mixerOut.motorOmega;
     simData.cmd.omegaSquared(:, k) = mixerOut.omegaSquared;
     simData.cmd.attitudeDesired(:, k) = posOut.attitudeDesired;
-    simData.cmd.accelerationCommand(:, k) = posOut.accelerationCommand;
+    accelerationCommandStored = posOut.accelerationCommand;
+    if isfield(altOut, "accelerationCommandZ")
+        accelerationCommandStored(3) = altOut.accelerationCommandZ;
+    end
+    simData.cmd.accelerationCommand(:, k) = accelerationCommandStored;
 
     simData.error.position(:, k) = ref.r - stateNow(idx.position);
     simData.error.velocity(:, k) = ref.v - stateNow(idx.velocity);
@@ -325,6 +360,32 @@ function attOut = InitializeMRACAttitudeOutput(attitudeDesired)
     attOut.rateError = zeros(3,1);
     attOut.referenceState = zeros(2,3);
     attOut.error = zeros(2,3);
+    attOut.KxHat = zeros(2,3);
+    attOut.KrHat = zeros(3,1);
+    attOut.KdHat = zeros(3,1);
+    attOut.OHat = zeros(3,1);
+end
+
+function attOut = CompleteClassicAttitudeOutputForStore(attOut, state, attitudeDesired)
+    idx = StateIndex();
+
+    attitude = state(idx.attitude);
+    bodyRate = state(idx.bodyRate);
+
+    attitudeDesired = attitudeDesired(:);
+    attitude(3) = WrapAngle(attitude(3));
+    attitudeDesired(3) = WrapAngle(attitudeDesired(3));
+
+    attOut.referenceState = [
+        attitudeDesired(1), attitudeDesired(2), attitudeDesired(3);
+        0,                  0,                  0
+    ];
+
+    attOut.error = [
+        attitude(1) - attitudeDesired(1), attitude(2) - attitudeDesired(2), WrapAngle(attitude(3) - attitudeDesired(3));
+        bodyRate(1),                      bodyRate(2),                      bodyRate(3)
+    ];
+
     attOut.KxHat = zeros(2,3);
     attOut.KrHat = zeros(3,1);
     attOut.KdHat = zeros(3,1);

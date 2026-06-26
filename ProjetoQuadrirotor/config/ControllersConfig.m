@@ -5,7 +5,7 @@ function controllersConfig = ControllersConfig(varargin)
 %
 % Modelos de simulacao:
 %   "Normal"    -> posicao P/PD/PID + atitude P/PD/PID
-%   "MRAC_Test" -> x/y P/PD/PID + z MRAC + atitude MRAC
+%   "MRAC_Test" -> x/y P/PD/PID + altitude P/PD/PID/MRAC + atitude P/PD/PID/MRAC
 % -------------------------------------------------------------------------
 
     p = inputParser;
@@ -33,14 +33,11 @@ function controllersConfig = ControllersConfig(varargin)
     controllersConfig.altitude.type = upper(string(p.Results.AltitudeType));
     controllersConfig.altitude.updateFrequency = p.Results.AltitudeFrequency;
     controllersConfig.altitude.requestedFrequency = p.Results.AltitudeFrequency;
+    controllersConfig.altitude.gains = positionGains;
 
     controllersConfig.attitude.type = upper(string(p.Results.AttitudeType));
     controllersConfig.attitude.updateFrequency = p.Results.AttitudeFrequency;
     controllersConfig.attitude.requestedFrequency = p.Results.AttitudeFrequency;
     controllersConfig.attitude.gains = attitudeGains;
 
-    if controllersConfig.simulationModel == "MRAC_Test"
-        controllersConfig.altitude.type = "MRAC";
-        controllersConfig.attitude.type = "MRAC";
-    end
 end
