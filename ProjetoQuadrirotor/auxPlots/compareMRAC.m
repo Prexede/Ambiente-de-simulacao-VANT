@@ -36,14 +36,14 @@ quadConfig = QuadrotorModel( ...
     "MaxThrustFactor", 5);
 
 simConfig = SimulationPlanner( ...
-    "TrajectoryType", "quad", ...
-    "Ts", 0.01, ...
-    "SegmentTime", 20, ...
-    "Repetitions", 3, ...
-    "YawDesired", 0, ...
+    "TrajectoryType", trajectoryType, ...
+    "Ts", Ts, ...
+    "SegmentTime", segmentTime, ...
+    "Repetitions", repetitions, ...
+    "YawDesired", yawDesired, ...
     "YawMode", "const", ...
     "YawTargetXY", [0 0], ...
-    "IntegrationMethod", "euler", ...
+    "IntegrationMethod", integrationMethod, ...
     "InitialState", zeros(12,1), ...
     "ResetStateEachLap", false);
 
@@ -93,7 +93,6 @@ fprintf("Trajetoria: %s\n", trajectoryType);
 fprintf("Tempo por segmento: %.2f s\n", segmentTime);
 fprintf("Repeticoes: %d\n", repetitions);
 fprintf("Tempo final: %.2f s\n", simConfig.time.tf);
-fprintf("Perturbacao: +2.0 kg nas voltas 2 e 3\n");
 
 for i = 1:numCases
     fprintf("\nRodando caso: %s | escala gamma = %.2f\n", ...
@@ -123,10 +122,8 @@ summaryTable = BuildSummaryTable(results);
 fprintf("\n--- Resumo numerico ---\n");
 disp(summaryTable);
 
+PlotPositionComparison(results);
 PlotPositionErrorComparison(results);
-PlotAltitudeComparison(results);
-PlotAltitudeKdHatComparison(results);
-PlotDeltaThrustComparison(results);
 
 function mracParams = ScaleMRACAdaptation(mracParams, scale)
 
@@ -198,6 +195,56 @@ function summaryTable = BuildSummaryTable(results)
         MaxAbs_KdHat_Altitude);
 end
 
+function PlotPositionComparison(results)
+
+    idx = StateIndex();
+
+    fig = figure("Name", "Comparacao_MRAC_Posicao", ...
+        "NumberTitle", "off", ...
+        "Color", "w", ...
+        "InvertHardcopy", "off");
+
+    ax = axes("Parent", fig);
+    hold(ax, "on");
+
+    simDataRef = results(1).simData;
+
+    plot3(ax, ...
+        simDataRef.ref.r(1,:), ...
+        simDataRef.ref.r(2,:), ...
+        simDataRef.ref.r(3,:), ...
+        "--", ...
+        "Color", [0 0 0], ...
+        "LineWidth", 2.0, ...
+        "DisplayName", "Referencia");
+
+    for i = 1:numel(results)
+        simData = results(i).simData;
+
+        x = simData.state.x(idx.x, :);
+        y = simData.state.x(idx.y, :);
+        z = simData.state.x(idx.z, :);
+
+        plot3(ax, x, y, z, ...
+            "Color", results(i).color, ...
+            "LineWidth", 1.5, ...
+            "DisplayName", results(i).name);
+    end
+
+    ConfigureAxes(ax, true);
+
+    xlabel(ax, "x [m]", "Color", "k");
+    ylabel(ax, "y [m]", "Color", "k");
+    zlabel(ax, "z [m]", "Color", "k");
+    title(ax, "Trajetoria de posicao", "Color", "k");
+
+    axis(ax, "equal");
+    view(ax, 3);
+
+    lgd = legend(ax, "show", "Location", "best");
+    ConfigureLegend(lgd);
+end
+
 function PlotPositionErrorComparison(results)
 
     fig = figure("Name", "Comparacao_MRAC_Erro_Posicao", ...
@@ -225,113 +272,6 @@ function PlotPositionErrorComparison(results)
     xlabel(ax, "Tempo [s]", "Color", "k");
     ylabel(ax, "||e_r|| [m]", "Color", "k");
     title(ax, "Erro de posicao", "Color", "k");
-
-    lgd = legend(ax, "show", "Location", "best");
-    ConfigureLegend(lgd);
-end
-
-function PlotAltitudeComparison(results)
-
-    idx = StateIndex();
-
-    fig = figure("Name", "Comparacao_MRAC_Altitude", ...
-        "NumberTitle", "off", ...
-        "Color", "w", ...
-        "InvertHardcopy", "off");
-
-    ax = axes("Parent", fig);
-    hold(ax, "on");
-
-    simDataRef = results(1).simData;
-    t = simDataRef.t;
-    zRef = simDataRef.ref.r(3,:);
-
-    plot(ax, t, zRef, ...
-        "--", ...
-        "Color", [0 0 0], ...
-        "LineWidth", 2.0, ...
-        "DisplayName", "z_d");
-
-    for i = 1:numel(results)
-        simData = results(i).simData;
-        z = simData.state.x(idx.z, :);
-
-        plot(ax, t, z, ...
-            "Color", results(i).color, ...
-            "LineWidth", 1.5, ...
-            "DisplayName", results(i).name);
-    end
-
-    AddLapMarkers(ax, results(1).simData);
-    ConfigureAxes(ax, false);
-
-    xlabel(ax, "Tempo [s]", "Color", "k");
-    ylabel(ax, "z [m]", "Color", "k");
-    title(ax, "Rastreamento de altitude", "Color", "k");
-
-    lgd = legend(ax, "show", "Location", "best");
-    ConfigureLegend(lgd);
-end
-
-function PlotAltitudeKdHatComparison(results)
-
-    fig = figure("Name", "Comparacao_MRAC_KdHat_Altitude", ...
-        "NumberTitle", "off", ...
-        "Color", "w", ...
-        "InvertHardcopy", "off");
-
-    ax = axes("Parent", fig);
-    hold(ax, "on");
-
-    for i = 1:numel(results)
-        simData = results(i).simData;
-        t = simData.t;
-        kdHat = simData.mrac.altitude.KdHat;
-
-        plot(ax, t, kdHat, ...
-            "Color", results(i).color, ...
-            "LineWidth", 1.5, ...
-            "DisplayName", results(i).name);
-    end
-
-    AddLapMarkers(ax, results(1).simData);
-    ConfigureAxes(ax, false);
-
-    xlabel(ax, "Tempo [s]", "Color", "k");
-    ylabel(ax, "\hat{K}_d altitude", "Color", "k");
-    title(ax, "Parametro adaptativo de altitude", "Color", "k");
-
-    lgd = legend(ax, "show", "Location", "best");
-    ConfigureLegend(lgd);
-end
-
-function PlotDeltaThrustComparison(results)
-
-    fig = figure("Name", "Comparacao_MRAC_Delta_Empuxo", ...
-        "NumberTitle", "off", ...
-        "Color", "w", ...
-        "InvertHardcopy", "off");
-
-    ax = axes("Parent", fig);
-    hold(ax, "on");
-
-    for i = 1:numel(results)
-        simData = results(i).simData;
-        t = simData.t;
-        deltaThrust = simData.mrac.altitude.deltaThrust;
-
-        plot(ax, t, deltaThrust, ...
-            "Color", results(i).color, ...
-            "LineWidth", 1.5, ...
-            "DisplayName", results(i).name);
-    end
-
-    AddLapMarkers(ax, results(1).simData);
-    ConfigureAxes(ax, false);
-
-    xlabel(ax, "Tempo [s]", "Color", "k");
-    ylabel(ax, "\Delta T_{MRAC} [N]", "Color", "k");
-    title(ax, "Empuxo adaptativo incremental", "Color", "k");
 
     lgd = legend(ax, "show", "Location", "best");
     ConfigureLegend(lgd);
@@ -397,3 +337,4 @@ function value = RMSValue(x)
         value = sqrt(mean(x.^2));
     end
 end
+
